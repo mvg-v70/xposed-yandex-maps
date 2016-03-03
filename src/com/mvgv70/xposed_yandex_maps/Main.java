@@ -11,32 +11,46 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Bundle;
-import android.util.AttributeSet;
 import android.util.Log;
-import android.widget.ImageButton;
+import android.view.View;
+import android.view.View.OnClickListener;
 
 public class Main implements IXposedHookLoadPackage {
 	
-  private static ImageButton findmeButton = null;
+  private static View findmeButton = null;
+  private static OnClickListener listener = null;
+  private static boolean headingMode = false;
   private final static String TAG = "xposed-yandex-maps";
   
   private Runnable pressButton = new Runnable()
   {
     public void run() 
     {
-      findmeButton.performClick();
-      Log.d(TAG,"findmeButton pressed");
+      Log.d(TAG,"Runnable: headingMode="+headingMode);
+      // нажимаем на кнопку, еслирежим ориентации по движению не включен
+      if (!headingMode)
+      {
+        findmeButton.performClick();
+        listener.onClick(findmeButton);
+      }
 	}
   };
-    
+  
   private LocationListener locationListener = new LocationListener() 
   {
     public void onLocationChanged(Location location)
     {
       Log.d(TAG,"GPS postion detected");
-      // нажмем на FindMeButton через 1 сек и через 2 сек
-      findmeButton.postDelayed(pressButton, 1000);
-      findmeButton.postDelayed(pressButton, 2000);
+      if (listener != null)
+      {
+    	Log.d(TAG,"GPS: headingMode="+headingMode);
+    	// нажмем на кнопку 3 раза с интервалом 2 секунды
+    	findmeButton.postDelayed(pressButton, 2000);
+    	findmeButton.postDelayed(pressButton, 4000);
+    	findmeButton.postDelayed(pressButton, 6000);
+      }
+      else
+        Log.w(TAG,"FindMeButton not found");
     }
       
     public void onProviderDisabled(String provider) {}
@@ -49,22 +63,13 @@ public class Main implements IXposedHookLoadPackage {
   @Override
   public void handleLoadPackage(LoadPackageParam lpparam) throws Throwable {
     
-    // FindMeButton(Context, AttributeSet)
-    XC_MethodHook createFindMeButton = new XC_MethodHook() {
-      
-      @Override
-      protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-        Log.d(TAG,"FindMeButton found");
-        findmeButton = (ImageButton)param.thisObject;
-      }
-    }; 
-    
     // MapActivity.onCreate(Bundle)
     XC_MethodHook createActivity = new XC_MethodHook() {
       
       @Override
       protected void afterHookedMethod(MethodHookParam param) throws Throwable {
         Log.d(TAG,"Activity.create");
+        headingMode = false;
         Activity activity = (Activity)param.thisObject;
         // показать версию модуля
         try 
@@ -81,12 +86,41 @@ public class Main implements IXposedHookLoadPackage {
           Log.e(TAG,"locationManager not found!");
       }
     };
-        
+    
+    // FindMeButton.setHeadingMode(boolean)
+    XC_MethodHook setHeadingMode = new XC_MethodHook() {
+      
+      @Override
+      protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+        // включение/выключения режима ориентации карты по движению
+        headingMode = (boolean)param.args[0]; 
+        Log.d(TAG,"setHeadingMode: headingMode="+headingMode);
+      }
+    };
+    
+    // FindMeButton.onClickListener constructor
+    XC_MethodHook findMeButtonListener = new XC_MethodHook() {
+      
+      @Override
+      protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+        Log.d(TAG,"listener: "+param.thisObject.getClass().getName());
+        if (param.thisObject instanceof View.OnClickListener)
+        {
+          findmeButton = (View)param.args[0];
+          Log.d(TAG,"findmeButton="+findmeButton.getClass().getName());
+          listener = (OnClickListener)param.thisObject;
+        }
+      }
+    };
+    
     // begin hooks
     if (!lpparam.packageName.equals("ru.yandex.yandexmaps")) return;
-    XposedHelpers.findAndHookConstructor("ru.yandex.yandexmaps.gui.FindMeButton", lpparam.classLoader, Context.class, AttributeSet.class, createFindMeButton);
-    XposedHelpers.findAndHookMethod("ru.yandex.yandexmaps.MapActivity", lpparam.classLoader, "onCreate", Bundle.class,  createActivity);
+    XposedHelpers.findAndHookMethod("ru.yandex.yandexmaps.app.MapActivity", lpparam.classLoader, "onCreate", Bundle.class,  createActivity);
+    // можно перехватить от 1 до 10, а в конструкторе проверить тип
+    XposedHelpers.findAndHookConstructor("ru.yandex.maps.appkit.customview.FindMeButton$1", lpparam.classLoader, "ru.yandex.maps.appkit.customview.FindMeButton", findMeButtonListener);
+    XposedHelpers.findAndHookMethod("ru.yandex.maps.appkit.customview.FindMeButton", lpparam.classLoader, "setHeadingMode", boolean.class,  setHeadingMode);
+    // XposedHelpers.findAndHookMethod("ru.yandex.maps.appkit.customview.FindMeButton", lpparam.classLoader, "setInProgress", boolean.class,  setInProgress);
     Log.d(TAG,"ru.yandex.yandexmaps OK");
   }
-
+  
 }

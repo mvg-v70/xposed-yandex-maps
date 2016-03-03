@@ -1,6 +1,7 @@
 <resources>
 
-    <string name="app_name">XposedYandexMaps</string>
-    <string name="app_version_name" translatable="false">1.2</string>
+    <string name="app_name" translatable="false">XposedYandexMaps</string>
+    <string name="app_version_name" translatable="false">1.3</string>
+    <string name="app_desc">turn map by direction at start</string>
 
 </resources>
